@@ -2,118 +2,84 @@ import string
 import numpy as np
 from numpy.typing import NDArray
 
-class Sentence:
-    GENE_VALUES: NDArray[np.int16] = np.array([
-        # *string.ascii_lowercase, *string.digits, ' '
-        *[ord(al) for al in string.ascii_lowercase],
-        ord(' ')
-    ], dtype=np.int16)
 
-    def __init__(self, sent: NDArray[np.int16]) -> None:
-        self.letters: NDArray[np.int16] = sent
-        self.fitness: float = float("inf")
-
-    def __str__(self):
-        return ''.join([chr(lt) for lt in self.letters])
-
-    def __repr__(self):
-        return f"'{str(self)}'; fitness = {self.fitness}"
-
-    @classmethod
-    def random(cls, rng: np.random.Generator, n: int) -> 'Sentence':
-        return cls(np.array(
-            rng.choice(Sentence.GENE_VALUES, size=n), dtype=np.int16))
-
-    @classmethod
-    def from_string(cls, s: str) -> 'Sentence':
-        out = []
-        for ltr in s:
-            # if ltr not in Sentence.GENE_VALUES:
-            #     raise ValueError(f"Char '{ltr}' is not a valid value")
-
-            out.append(ord(ltr))
-
-        return cls(np.array(out, dtype=np.int16))
-
-    @property
-    def length(self) -> int: return len(self.letters)
-
-    def update_fitness(self, target: 'Sentence') -> None:
-        self.fitness = np.sum(np.abs(self.letters - target.letters))
-
-POP_COUNT: int = 50
-GENOME_LEN: int = 20
+Gene = np.int16
+Sentence = NDArray[Gene]
+GENE_VALUES: NDArray[Gene] = np.array([
+    *[ord(al) for al in string.ascii_uppercase],
+    *[ord(al) for al in string.ascii_lowercase],
+    *[ord(al) for al in string.digits],
+    *[ord(pl) for pl in "?. "]
+], dtype=Gene)
+POP_COUNT: int = 100
 MAX_GEN_COUNT: int = 100000
-DUP_RATE: float = 0.05
-MUT_RATE: float = 0.9
+DUP_RATE: float = 0.1
+MUT_RATE: float = 0.05
+
+def random(rng: np.random.Generator, n: int) -> Sentence:
+    return rng.choice(GENE_VALUES, size=n).astype(Gene)
+
+def from_string(s: str) -> Sentence:
+    return np.array([ord(ltr) for ltr in s], dtype=Gene)
+
+def update_fitness(pop_matrix: Sentence, target: Sentence) -> Sentence:
+    return np.sum(np.abs(pop_matrix - target), axis=1)
+    # return np.sum(np.pow(pop_matrix - target, 2), axis=1)
 
 def main():
     rng = np.random.default_rng(20)
 
-    target = Sentence.from_string("what you doing today")
-    pop: list[Sentence] = [
-        Sentence.random(rng, GENOME_LEN) for _ in range(POP_COUNT)]
-
-    for indiv in pop: indiv.update_fitness(target)
+    target = from_string("How are you doing . . . Today?")
+    pop_matrix = rng.choice(
+        GENE_VALUES, size=(POP_COUNT, len(target))).astype(Gene)
 
     epoch: int = 0
-    best_str = ""
-    best_fit: float = float("inf")
-    while best_fit:
-        # print(f"In epoch {epoch}")
+    best_fit: float = np.inf
+    best_genome: Sentence = np.array([])
+    while best_fit > 0:
         if epoch % 1000 == 0:
-            print(f"[ep. {epoch:7}] '{best_str}'; best = {best_fit}")
+            d = ''.join(chr(c) for c in best_genome)
+            print(f"[ep. {epoch:7}] '{d}'; fitness = {best_fit}")
 
-        pop.sort(key=lambda s: s.fitness)
-        if pop[0].fitness < best_fit:
-            best_str = str(pop[0])
-            best_fit = pop[0].fitness
+        # Compute fitness
+        fitness = update_fitness(pop_matrix, target)
 
-        # Duplicate top 30% into next generation
-        new_pop: list[Sentence] = [Sentence.from_string(best_str)]
-        dup_count = int(DUP_RATE * len(pop)) - 1
-        for i in range(dup_count):
-            new_pop.append(pop[i])
+        # Sort by fitness
+        indices = np.argsort(fitness)
+        pop_matrix = pop_matrix[indices]
+        fitness = fitness[indices]
+        if fitness[0] < best_fit:
+            best_genome = pop_matrix[0]
+            best_fit = fitness[0]
 
-        # Crossover to get sentences for the remaining slots
-        for indA in range(dup_count + 1, len(pop)):
-            # NOTE: indB might potentially be equal to indA, which is fine
-            # for now
-            indB = np.random.randint(dup_count, len(pop) - 1)
-            # pA_fitness = pop[indA].calc_fitness(target)
-            # pB_fitness = pop[indB].calc_fitness(target)
-            # split_point = random.randint(4, 16)
-            split_point = int(len(pop[indA].letters) / 2)
+        # Allocate space for new population
+        new_pop_matrix = np.zeros_like(pop_matrix)
 
-            new_pop.append(Sentence(np.concatenate((
-                pop[indA].letters[:split_point],
-                pop[indB].letters[split_point:]
-            ))))
+        # Duplicate top performers
+        dup_count = int(DUP_RATE * POP_COUNT)
+        new_pop_matrix[:dup_count] = pop_matrix[:dup_count]
+
+        # Crossover the remaining ones
+        for i in range(POP_COUNT - dup_count):
+            p1, p2 = rng.choice(pop_matrix[:dup_count + 10],
+                size=2, replace=False)
+            split = rng.integers(1, len(target) - 1)
+            new_pop_matrix[i, :split] = p1[:split]
+            new_pop_matrix[i, split:] = p2[split:]
 
         # Mutate
-        for sent in new_pop:
-            for i in range(sent.length):
-                if np.random.random() < MUT_RATE:
-                    sent.letters[i] = np.random.choice(Sentence.GENE_VALUES)
+        mut_mask = rng.random(size=new_pop_matrix.shape) < MUT_RATE
+        # # NOTE: To not mutate top_n performer
+        top_n = 3
+        mut_mask[top_n - 1, :] = False
 
-        # Replace old population with new one
-        pop = new_pop
-        print("len(pop) =", len(pop))
-        for indiv in pop: indiv.update_fitness(target)
+        # Generate mutation replacement genes for each slot
+        random_genes = rng.choice(GENE_VALUES, size=new_pop_matrix.shape)
 
+        pop_matrix = np.where(mut_mask, random_genes, new_pop_matrix)
         epoch += 1
 
-
-    print("---------------------")
-
-    # Print out the best after the evolution process
-    pop = sorted(pop, key=lambda s: s.fitness, reverse=False)
-    print(f"Last best string : {pop[0]}")
-    print(f"Last best fitness: {pop[0].fitness}\n")
-
-    print(f"Best best string : {best_str}")
-    print(f"Best best fitness: {best_fit}\n")
-
+    print(f"Solved in {epoch} epochs! Final: {''.join(chr(c) for c in best_genome)}; fitness = {best_fit}")
 
 
 if __name__ == "__main__":
