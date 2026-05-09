@@ -71,7 +71,7 @@ def main():
         mut_mask = rng.random(size=new_pop_matrix.shape) < MUT_RATE
         # # NOTE: To not mutate top_n performer
         top_n = 3
-        mut_mask[top_n - 1, :] = False
+        mut_mask[:top_n:, :] = False
 
         # Generate mutation replacement genes for each slot
         random_genes = rng.choice(GENE_VALUES, size=new_pop_matrix.shape)
