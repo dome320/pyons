@@ -2,26 +2,35 @@ import numpy as np
 import vectorbt as vbt
 from numpy.typing import NDArray
 
-# gene and genome definition 
-Gene = np.int16
-Genome = NDArray[Gene]
+# genome definition 
+Genome = NDArray[np.int_]
 
 #initialize data to S&P 500 
-price = vbt.YFData.download('^GSPC').get('Close')
+train_price = vbt.YFData.download(
+    '^GSPC',
+    start='2000-01-01',
+    end='2018-12-31'
+).get('Close')
+
+test_price = vbt.YFData.download(
+    '^GSPC',
+    start='2019-01-01',
+    end='2026-01-01'
+).get('Close')
 
 # fast_window and slow_window can only contain numbers from 1 through 1000
-GENE_VALUES = np.arange(1, 250, dtype=Gene)
+GENE_VALUES = np.arange(1, 1001)
 
 # initialization of population size and genetic operator specifications 
 POP_COUNT: int = 100
 GEN_COUNT: int = 20
 START_CASH = 100
-DUP_RATE: float = 0.1 
+DUP_RATE: float = 0.05
 DUP_COUNT = int(DUP_RATE * POP_COUNT)
-MUT_RATE: float = 0.05
+MUT_RATE: float = 0.15
 
 # helper methods 
-def compute_fitness(population: Genome) -> np.array:
+def compute_fitness(population: Genome, price) -> np.array:
     fitness = np.array([])
     for fast_window, slow_window in population:
 
@@ -29,7 +38,7 @@ def compute_fitness(population: Genome) -> np.array:
         if fast_window <= 0 or slow_window <= 0:
             fitness = np.append(fitness, -np.inf)
             continue
-        if fast_window >= slow_window:
+        if fast_window >= slow_window: 
             fitness = np.append(fitness, -np.inf)
             continue
 
@@ -37,7 +46,7 @@ def compute_fitness(population: Genome) -> np.array:
         slow_ma = vbt.MA.run(price, slow_window) 
         entries = fast_ma.ma_crossed_above(slow_ma)
         exits = fast_ma.ma_crossed_below(slow_ma) 
-        pf = vbt.Portfolio.from_signals(price, entries, exits, init_cash=START_CASH)
+        pf = vbt.Portfolio.from_signals(price, entries, exits, init_cash=START_CASH, freq="1D")
         fitness_value = pf.total_return() - abs(pf.max_drawdown())
         fitness = np.append(fitness, fitness_value)
     return fitness
@@ -45,7 +54,7 @@ def compute_fitness(population: Genome) -> np.array:
 
 def main():
     rng = np.random.default_rng(99) 
-    population = rng.choice(GENE_VALUES, size = (POP_COUNT, 2)).astype(Gene)
+    population = rng.choice(GENE_VALUES, size = (POP_COUNT, 2))
     epoch: int = 0
     best_fit: float = -np.inf 
     best_genome: Genome = np.array([])
@@ -55,7 +64,7 @@ def main():
             print(f"Best Genome: {best_genome} | Best Fitness: {best_fit}")
 
         # fitness calc
-        fitness = compute_fitness(population)
+        fitness = compute_fitness(population, train_price)
 
         # sort by fittness 
         indices = np.argsort(fitness)[::-1]
@@ -87,7 +96,15 @@ def main():
 
         epoch += 1
     
+    # Print Results 
     print(f"Completed {epoch} epochs! | Final: {best_genome} | Fitness: {best_fit}")
+    fast_ma = vbt.MA.run(test_price, best_genome[0])
+    slow_ma = vbt.MA.run(test_price, best_genome[1]) 
+    entries = fast_ma.ma_crossed_above(slow_ma)
+    exits = fast_ma.ma_crossed_below(slow_ma) 
+    pf = vbt.Portfolio.from_signals(test_price, entries, exits, init_cash=START_CASH)
+    print("Best Genome Stats:")
+    print(pf.stats())
 
 if __name__ == "__main__":
     main()
