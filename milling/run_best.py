@@ -2,7 +2,9 @@ from world_setup import simulate
 
 def main():
     #TODO: Add in some file loading system
-    best = [0.27, -0.36,  0.1, -0.15]
+
+    # Result after 280 epochs: Final: [ 0.23 -0.05  0.1  -0.17]; fitness = 0.5449154775816047
+    best = [0.23, -0.05,  0.1, -0.17]
 
     simulate(best, show=True)
 
