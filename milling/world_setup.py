@@ -3,28 +3,16 @@
 from swarmsim.world.RectangularWorld import RectangularWorld, RectangularWorldConfig
 from swarmsim.agent.MazeAgent import MazeAgent, MazeAgentConfig
 from swarmsim.world.simulate import main as sim
-from swarmsim.agent.control.Controller import AbstractController
+from swarmsim.agent.control.BinaryController import BinaryController
 from swarmsim.world.spawners.AgentSpawner import PointAgentSpawner
 from swarmsim.metrics.Circliness import Circliness
 from swarmsim.sensors.BinaryFOVSensor import BinaryFOVSensor
 
 
-class milling(AbstractController):
-    def __init__(self, parent=None, speeds: list=None):
-        super().__init__(parent)
-        self.speeds=speeds
-
-    def get_actions(self, agent):
-        if agent.agent_in_sight:
-            return self.speeds[0], self.speeds[1]
-        else:
-            return self.speeds[2], self.speeds[3]
-
-
 def simulate(speeds: list, steps: int = 1000, show=False) -> float:
     world_config = RectangularWorldConfig(
         size=[10,10],time_step=1/40,
-        # stop_at=steps
+        stop_at=steps
     )
     world = RectangularWorld(world_config)
 
@@ -34,7 +22,10 @@ def simulate(speeds: list, steps: int = 1000, show=False) -> float:
     sensor = BinaryFOVSensor(agent=agent,theta=0.45,distance=2.0,false_positive=0.0,false_negative=0.0,show=False)
     agent.sensors.append(sensor)
 
-    controller = milling(agent, speeds)
+    # A = v,w when not seen B = v, when seen
+    a = (speeds[2], speeds[3])
+    b = (speeds[0], speeds[1])
+    controller = BinaryController(a, b)
     agent.controller = controller
 
 
@@ -45,23 +36,21 @@ def simulate(speeds: list, steps: int = 1000, show=False) -> float:
 
     world.spawners.append(spawner)
 
-    if not show:
-        circliness = Circliness(history=steps)
-        circliness.attach_world(world)
-        circliness.reset()
-        world.metrics.append(circliness)
-
-        for _ in range(steps):
-            world.step()
-
-        return float(circliness.average)
-
-    sim(world)
+    world.metrics = [Circliness(history=steps)]
+    sim(
+            world,
+            show_gui=show,
+        )
+    return float(world.metrics[0].average)
 
 
-    # world.metrics = [Circliness(history=steps)]
-    # sim(
-    #     world,
-    #     show_gui=show,
-    # )
-    # return float(world.metrics[0].average)
+
+
+
+# Average circliness longer 
+# Use Binary Controller 
+# Neuro Evolution - Note just considering some fixed number of ways but rather evolving some kind of graph 
+# Library needs to suport Neuro Evolution 
+# NEAT is one of the libraries that currently support that 
+# Neural Architecture search 
+# Future definition of operators such as adding a nueron
